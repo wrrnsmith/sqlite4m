@@ -1,9 +1,42 @@
-if exist('testdb.sqlite', 'file')==2
-  delete('testdb.sqlite');
+dbfnm = 'test_sqlite.db';
+if exist(dbfnm, 'file')==2
+  delete(dbfnm);
 end
 
-dbp=sql_open('testdb.sqlite', 'c');
-fprintf('test database was opened, dbp = %f\n\n', dbp);
+dbp=sql_open(dbfnm, 'c');
+fprintf('test database was created and opened, dbp = %f\n\n', dbp);
+if sql_open~=dbp
+  sql_close(dbp);
+  error('failed, sql_open didn''t return the same db connection');
+else
+  fprintf('success, sql_open returned this db connection\n\n');
+end
+
+try
+  [zpath, fnm, ext] = fileparts(sql_db_filename);
+catch sqlite4m_err
+  rethrow(sqlite4m_err);
+end
+ffnm = [fnm ext];
+if ~strcmp(ffnm, dbfnm)
+  sql_close(dbp);
+  error('failed, sql_db_filename didn''t return the expected file name, \nbut %s', ffnm);
+else
+  fprintf('sql_db_filename succeeded\n');
+end
+try
+  [zpath, fnm, ext] = fileparts(sql_db_filename(dbp));
+catch sqlite4m_err
+  rethrow(sqlite4m_err);
+end
+ffnm = [fnm ext];
+if ~strcmp(ffnm, dbfnm)
+  sql_close(dbp);
+  error('failed, sql_db_filename(dbp) didn''t return the expected file name, \nbut %s', ffnm);
+else
+  fprintf('sql_db_filename(dbp) succeeded\n');
+end
+
 %
 try 
   sql_exec(dbp, 'CREATE TABLE table1 (col1, col2);');
@@ -108,5 +141,12 @@ disp(r);
 fprintf('and\n');
 fprintf('%s\nwas returnd\n\n', zsql);
 %
-sql_close(dbp);
-fprintf('test database has been closed\n');
+if sql_close(dbp)==0
+  fprintf('success, test database has been closed\n');
+else
+  fprintf('fail, sql_close(dbp) didn''t return 0\n');
+end
+delete(dbfnm);
+fprintf('%s has (presumably) been deleted\n', dbfnm);
+
+
