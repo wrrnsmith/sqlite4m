@@ -26,6 +26,7 @@ sql_exec(MEXSUFFIX): sql_exec.c sqlite4m.h
 
 all: sql_open$(MEXSUFFIX) sql_close$(MEXSUFFIX) sql_insert$(MEXSUFFIX) \
 	sql_select_numeric$(MEXSUFFIX) sql_select$(MEXSUFFIX) \
+	sql_db_filename$(MEXSUFFIX) \
 	sql_stmt$(MEXSUFFIX) sql_exec$(MEXSUFFIX) sql_tables$(MEXSUFFIX)
 
 sqlite4m_source.zip: sqlite4m.h sqlite4m.c sql_columnnames.m sql_tables.c \
