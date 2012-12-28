@@ -31,14 +31,15 @@ function zsql = sql_insert(dbp, tablename, columns, data)
 %                  - Matlab cell or structure arrays are inserted as follows:
 %                    * row or column vectors of Matlab cells or structures can be
 %                      inserted, if each cell or structure field has the same length.
-%                      However, character, int8, and uint8 as well as empty arrays
-%                      are considered to have length 1, and these are inserted 
-%                      as SQLITE text, blob, and NULL, respectively. So if one or more cell
-%                      or structure field is a character, int8, or uint8 array, then all other
+%                      Empty and character matlab arrays are considered to have length 1,
+%                      and these are inserted as SQLITE NULL and text, respectively. Finally,
+%                      int8 and uint8 matlab arrays have a length equal to the nr of columns,
+%                      because each column is inserted as a database blob. So if one or more cell
+%                      or structure field is empty or a character array, then all other
 %                      cells or structure fields must have length 1.
 %                    * full Matlab cell or structure arrays can be inserted, if each cell
-%                      or structure field has length 1. Again character, int8,
-%                      and uint8 as well as empty arrays are considered to have length 1.
+%                      or structure field has length 1. Again character, and in this case also
+%                      int8 and uint8 as well as empty arrays are considered to have length 1.
 %   Output:
 %      zsql        String with the SQL INSERT statement, that was executed
 %
