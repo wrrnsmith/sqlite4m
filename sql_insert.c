@@ -33,7 +33,6 @@
    LOOP_ROW_COL(int64_t, int64, i64x)
    LOOP_ROW_COL(uint64_t, int64, i64x)
 */
-
 #define LOOP_ROW_COL(mtype, btype, xvar)				\
   do { for( krow=0; krow<nrow; krow++ ) {				\
       for( k=0; k<ncol; k++ ) {						\
@@ -51,6 +50,12 @@
   TRY_SQLFUN_FIN_RB(sqlite3_bind_ ## btype(ppStmt, k+1, xvar),	\
 			insert, bind_btype); } while(0)
 
+/* Bind a column of matlab bytes (int8/uint8) to a db blob: */
+#define BIND_COL_BLOB(mtype, xvar, nrow_blob)				\
+  do { xvar = &(((mtype *) mxGetData(mxx))[krow*nrow_blob]);		\
+    TRY_SQLFUN_FIN_RB(sqlite3_bind_blob(ppStmt, k+1, xvar, nrow_blob, SQLITE_STATIC), \
+			insert, bind_blob); } while(0)
+
 /* Like previous macro, but bind exactly the first and only element
    in a matrix of cells:  */
 #define BIND_ONE_0(mtype, btype, xvar)					\
@@ -66,6 +71,14 @@
     xvar = ((mtype *) mxGetData(mxx))[k];				\
     TRY_SQLFUN_FIN_RB(sqlite3_bind_ ## btype(ppStmt, k+1, xvar),	\
 			  insert, bind_btype);				\
+      } } while(0)
+
+/* Loop over db columns, bind in each column a column of matlab bytes (int8/uint8) to a db blob: */
+#define LOOP_COL_BLOB(mtype, xvar, nrow_blob)				\
+  do { for( k=0; k<ncol2; k++ ) {					\
+      xvar = &(((mtype *) mxGetData(mxx))[k*nrow_blob]);		\
+      TRY_SQLFUN_FIN_RB(sqlite3_bind_blob(ppStmt, k+1, xvar, nrow_blob, SQLITE_STATIC), \
+			  insert, bind_blob);				\
       } } while(0)
 
 #define BIND_BLOBS(mtype)						\
@@ -120,12 +133,33 @@ size_t GetLength( const mxArray *mxx ) {
     return mxGetM(mxx)*mxGetN(mxx);
 }
 
+/* Get length of a matlab array:
+   - an empty array has length 1, because in the data base it will become NULL,
+   - int8 and uint8 have a length, which is the nr of columns,
+     because each column is inserted as a blob,
+   - other types have a length which is nr of rows times nr of columns 
+*/
+size_t GetLength2( const mxArray *mxx ) {
+  mxClassID cid = mxGetClassID(mxx);
+  if( mxIsEmpty(mxx) )
+    return 1;
+  else {
+    mxClassID cid = mxGetClassID(mxx);
+    if( cid==mxINT8_CLASS || cid==mxUINT8_CLASS )
+      return mxGetN(mxx);
+    else
+      return mxGetM(mxx)*mxGetN(mxx);
+  }
+}
+
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
   int ilast, iret, krow, nrow, k, ncol, ncol2, nchar;
   double x;
   int ix;
+  int8_t *bx;
+  uint8_t *ux;
   sqlite3_int64 i64x;
   mxArray *mxTable=0, *mxColList, *mxStr;
   const mxArray *mxTableName, *mxArgs[3], *mxx;
@@ -314,8 +348,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
       /* Insert single matrices:
 	 Sqlite handles single precision floats internally with double
 	 precision, therefore each single precision matrix element gets
-	 converted to double. If (single) float is specified when creating
-	 the table column, then the data should get stored as single precision.
+	 converted to double.
       */
     case mxSINGLE_CLASS:
       LOOP_ROW_COL(float, double, x);
@@ -376,19 +409,19 @@ void mexFunction( int nlhs, mxArray *plhs[],
     case mxCELL_CLASS:
     case mxSTRUCT_CLASS:
       if( nrow==1 ) { /* Handle a row vector of cells each cell having same length: */
-	/* Assert that each cell has the same lenth: */
+	/* Assert that each cell has the same length: */
 	nrow2 = 0;
 	for( k=0; k<ncol; k++ ) {
 	  mxx =  ((mxArray **) mxGetData(prhs[ilast]))[k];
-	  if( nrow2==0 )
-	    nrow2 = GetLength(mxx);
-	  else
-	    if( GetLength(mxx)!=nrow2 ) {
+	  if( nrow2==0 ) {
+	    nrow2 = GetLength2(mxx);
+	  } else
+	    if( GetLength2(mxx)!=nrow2 ) {
 	      sqlite3_finalize(ppStmt);
 	      sqlite3_exec(ppDb, "ROLLBACK;", NULL, NULL, NULL);
 	      CLOSE_DB;
 	      mexErrMsgIdAndTxt("Sqlite4m:sql_insert:length",
-				"cells must contain arrays with the same length");
+				"row of cells must contain arrays with the same length, at column %d", k);
 	    }
 	}
 	/* mexPrintf("nrow2 = %d\n", nrow2); */
@@ -415,10 +448,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
 		BIND_ONE_I(mxLogical, int, ix);
 		break;
 	      case mxINT8_CLASS:
-		BIND_ONE_BLOB(int8_t);
+		BIND_COL_BLOB(int8_t, bx, mxGetM(mxx));
 		break;
 	      case mxUINT8_CLASS:
-		BIND_ONE_BLOB(int8_t);
+		BIND_COL_BLOB(uint8_t, ux, mxGetM(mxx));
 		break;
 	      case mxINT16_CLASS:
 		BIND_ONE_I(int16_t, int, ix);
@@ -455,11 +488,12 @@ void mexFunction( int nlhs, mxArray *plhs[],
 	  TRY_SQLFUN_FIN_RB(step_reset(ppStmt, ppDb), insert, step/reset);
 	}
       } else if( ncol==1 ) { /* Handle a column vector of cells: */
+	/* Assert that arrays in each cell have equal length (nr of db columns): */
 	ncol2 = 0;
 	for( krow=0; krow<nrow; krow++ ) {
 	  mxx =  ((mxArray **) mxGetData(prhs[ilast]))[krow];
 	  if( ncol2==0 )
-	    ncol2 = GetLength(mxx);
+	    ncol2 = GetLength2(mxx);
 	}
 	for( krow=0; krow<nrow; krow++ ) {
 	  mxx  = ((mxArray **) mxGetData(prhs[ilast]))[krow];
@@ -476,15 +510,14 @@ void mexFunction( int nlhs, mxArray *plhs[],
 		TRY_SQLFUN_FIN_RB(sqlite3_bind_double(ppStmt, k+1, x), insert, bind_double);
 	      }
 	      break;
-
 	    case mxLOGICAL_CLASS:
 	      LOOP_COL(mxLogical, int, ix);
 	      break;
 	    case mxINT8_CLASS:
-	      BIND_ONE_BLOB(int8_t);
+	      LOOP_COL_BLOB(int8_t, bx, mxGetM(mxx));
 	      break;
 	    case mxUINT8_CLASS:
-	      BIND_ONE_BLOB(uint8_t);
+	      LOOP_COL_BLOB(uint8_t, ux, mxGetM(mxx));
 	      break;
 	    case mxINT16_CLASS:
 	      LOOP_COL(int16_t, int, ix);
