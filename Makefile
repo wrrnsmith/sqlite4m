@@ -33,5 +33,5 @@ sqlite4m_source.zip: sqlite4m.h sqlite4m.c sql_columnnames.m sql_tables.c \
 	sql_open.c sql_close.c sql_open.m sql_close.m \
 	sql_insert.c sql_insert.m \
 	sql_db_filename.c sql_exec.c sql_stmt.c \
-	Makefile sqlite4m_tests.m
+	Makefile sqlite4m_tests.m license.txt
 	zip sqlite4m_source.zip $^
