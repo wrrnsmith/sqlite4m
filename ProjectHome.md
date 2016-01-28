@@ -1,0 +1,1 @@
+The project provides Mex files for using Sqlite databases from Matlab. Particularly larger numeric matrices can be inserted into or retrieved from Sqlite databases with reasonable speed, as Sqlite is accessed via the C API.
